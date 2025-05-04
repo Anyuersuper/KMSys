@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>卡密管理系统</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body class="bg-light">
+  <div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2>🎫 卡密管理系统</h2>
+      <div id="authButtons" class="d-flex gap-2">
+        <button class="btn btn-primary" onclick="showLoginModal()" id="loginBtn">登录</button>
+        <div class="d-flex gap-2" id="loggedInButtons" style="display: none;">
+          <button class="btn btn-light border" onclick="showAdminSettings()" id="settingsBtn">设置</button>
+          <button class="btn btn-danger" onclick="logout()" id="logoutBtn">退出</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 生成卡密 -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title">生成卡密</h5>
+        <label for="validDays">有效期（天）</label>
+        <input type="number" class="form-control mb-2" id="validDays" value="1" min="1">
+        <button class="btn btn-primary" onclick="generateToken()" id="generateBtn" disabled>生成</button>
+        <p class="mt-2 text-break" id="generatedToken"></p>
+      </div>
+    </div>
+
+    <!-- 校验卡密 -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title">校验卡密</h5>
+        <input type="text" class="form-control mb-2" id="validateInput" placeholder="请输入卡密">
+        <button class="btn btn-success" onclick="validateToken()">校验</button>
+        <p class="mt-2" id="validateResult"></p>
+      </div>
+    </div>
+
+    <!-- 卡密列表 -->
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">卡密列表</h5>
+        <button class="btn btn-secondary mb-2" onclick="loadTokens()">刷新列表</button>
+        <table class="table table-bordered">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Token</th>
+              <th>创建时间</th>
+            </tr>
+          </thead>
+          <tbody id="tokenTable"></tbody>
+        </table>
+        <nav>
+          <ul class="pagination" id="pagination"></ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <!-- 登录模态框 -->
+  <div class="modal fade" id="loginModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">管理员登录</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">用户名</label>
+            <input type="text" class="form-control" id="username">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">密码</label>
+            <input type="password" class="form-control" id="password">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" onclick="login()">登录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理员设置模态框 -->
+  <div class="modal fade" id="adminSettingsModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">修改管理员信息</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">新用户名</label>
+            <input type="text" class="form-control" id="newUsername">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">新密码</label>
+            <input type="password" class="form-control" id="newPassword">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" class="btn btn-primary" onclick="updateAdminCredentials()">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let currentPage = 1;
+    const pageSize = 10;
+    let loginModal;
+    let adminSettingsModal;
+    
+
+    document.addEventListener('DOMContentLoaded', function() {
+      loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
+      adminSettingsModal = new bootstrap.Modal(document.getElementById('adminSettingsModal'));
+      checkAuth();
+    });
+
+    function showLoginModal() {
+      loginModal.show();
+    }
+
+    function showAdminSettings() {
+      adminSettingsModal.show();
+    }
+
+    async function checkAuth() {
+      const res = await fetch('/check-auth');
+      const data = await res.json();
+      updateAuthUI(data.logged_in);
+      if (data.logged_in) {
+        document.getElementsByClassName("btn btn-light border")[0].style.display='flex';
+        document.getElementsByClassName("btn btn-danger")[0].style.display='flex';
+      } else {
+        document.getElementsByClassName("btn btn-light border")[0].style.display='none';
+        document.getElementsByClassName("btn btn-danger")[0].style.display='none';
+      }
+    }
+
+    function updateAuthUI(loggedIn) {
+      document.getElementById('loginBtn').style.display = loggedIn ? 'none' : 'block';
+      document.getElementById('loggedInButtons').style.display = loggedIn ? 'inline-block' : 'none';
+      document.getElementById('generateBtn').disabled = !loggedIn;
+    }
+
+    async function login() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        loginModal.hide();
+        updateAuthUI(true);
+        document.getElementById('username').value = '';
+        document.getElementById('password').value = '';
+        window.location.reload(); // 刷新页面以加载最新数据
+      } else {
+        alert('登录失败：' + (data.error || '用户名或密码错误'));
+      }
+    }
+
+    async function logout() {
+      await fetch('/logout', { method: 'POST' });
+      updateAuthUI(false);
+      window.location.reload(); // 刷新页面以加载最新数据
+    }
+
+    async function generateToken() {
+      const days = parseInt(document.getElementById("validDays").value);
+      if (isNaN(days) || days <= 0) {
+        alert("请输入有效的天数");
+        return;
+      }
+
+      const res = await fetch("/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days })
+      });
+
+      const data = await res.json();
+      document.getElementById("generatedToken").textContent = data.token;
+      loadTokens(currentPage);
+    }
+
+    async function validateToken() {
+      const token = document.getElementById("validateInput").value;
+      if (!token) {
+        alert("请输入卡密");
+        return;
+      }
+
+      const res = await fetch("/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+      });
+
+      const data = await res.json();
+      const result = document.getElementById("validateResult");
+
+      if (data.valid) {
+        result.innerHTML = `<span class="text-success">✅ 有效，创建时间：${data.created_at}</span>`;
+      } else {
+        result.innerHTML = `<span class="text-danger">❌ 无效：${data.reason || '未知错误'}</span>`;
+      }
+    }
+
+    async function updateAdminCredentials() {
+      const newUsername = document.getElementById('newUsername').value;
+      const newPassword = document.getElementById('newPassword').value;
+
+      if (!newUsername || !newPassword) {
+        alert('用户名和密码不能为空');
+        return;
+      }
+
+      const res = await fetch('/update-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          username: newUsername, 
+          password: newPassword 
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        alert('管理员信息更新成功，请重新登录');
+        adminSettingsModal.hide();
+        updateAuthUI(false);
+        window.location.reload(); // 刷新页面以加载最新数据
+      } else {
+        alert('更新失败：' + (data.error || '未知错误'));
+      }
+    }
+
+    function formatDateTime(utcDateString) {
+      const date = new Date(utcDateString);
+      // 转换为北京时间 (UTC+8)
+      date.setHours(date.getHours() + 8);
+      return date.toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    }
+
+    async function loadTokens(page = 1) {
+      currentPage = page;
+      const res = await fetch(`/list?page=${page}&size=${pageSize}`);
+      const result = await res.json();
+      const tokens = result.data;
+      const total = result.total;
+
+      const table = document.getElementById("tokenTable");
+      table.innerHTML = "";
+      tokens.forEach(t => {
+        const row = `<tr><td>${t.id}</td><td class="text-break">${t.token}</td><td>${formatDateTime(t.created_at)}</td></tr>`;
+        table.innerHTML += row;
+      });
+
+      renderPagination(total, result.page, result.size);
+    }
+
+    function renderPagination(total, page, size) {
+      const pageCount = Math.ceil(total / size);
+      const pagination = document.getElementById("pagination");
+      pagination.innerHTML = "";
+
+      for (let i = 1; i <= pageCount; i++) {
+        pagination.innerHTML += `
+          <li class="page-item ${i === page ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="loadTokens(${i})">${i}</a>
+          </li>`;
+      }
+    }
+
+    // 初始加载第一页
+    loadTokens();
+  </script>
+</body>
+</html>
